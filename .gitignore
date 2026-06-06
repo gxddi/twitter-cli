@@ -1,0 +1,11 @@
+build
+tmp
+
+# Executables
+*.exe
+*.out
+*.x
+*.app
+*.i*86
+*.x86_64
+*.hex
