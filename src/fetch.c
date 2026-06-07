@@ -8,6 +8,69 @@
 #include "../include/fetch.h"
 #include "../include/tweet.h"
 
+typedef struct Credentials {
+  char qid[50]; // Query ID
+  char csrf[200];
+  char tid[200]; // Transaction ID
+  char auth_bearer[200];
+  char twid[100]; // Twitter ID
+  char auth_token[100];
+  char cf_bm[250]; // Cloudflare bot management
+} Credentials;
+
+/* Read and parse path into Credentials struct */
+Credentials get_creds(char *path) {
+  // Read credentials.conf
+  FILE *file = fopen(path, "r");
+  if (!file) {
+    printf("Could not open %s\n", path);
+    exit(1);
+  }
+
+  fseek(file, 0, SEEK_END);
+  int len = ftell(file);
+  rewind(file);
+
+  char *contents = malloc((sizeof(char) * len) + 1);
+  if (!contents) {
+    printf("Allocation of memory for credentials failed.\nIs %s too large?\n",
+           path);
+    exit(1);
+  }
+  fread(contents, sizeof(char), len, file);
+  contents[len] = '\0';
+  fclose(file);
+
+  // Parse credentials and fill out Credentials struct
+  Credentials creds;
+  memset(&creds, 0, sizeof(Credentials));
+
+  char *line = strtok(contents, "\n");
+  while (line) {
+    char key[50], value[250];
+    if (sscanf(line, "%49[^=]=%249[^;]", key, value) == 2) {
+      if (strcmp(key, "query_id") == 0)
+        strncpy(creds.qid, value, sizeof(creds.qid) - 1);
+      else if (strcmp(key, "csrf_token") == 0)
+        strncpy(creds.csrf, value, sizeof(creds.csrf) - 1);
+      else if (strcmp(key, "transaction_id") == 0)
+        strncpy(creds.tid, value, sizeof(creds.tid) - 1);
+      else if (strcmp(key, "auth_bearer") == 0)
+        strncpy(creds.auth_bearer, value, sizeof(creds.auth_bearer) - 1);
+      else if (strcmp(key, "twitter_id") == 0)
+        strncpy(creds.twid, value, sizeof(creds.twid) - 1);
+      else if (strcmp(key, "auth_token") == 0)
+        strncpy(creds.auth_token, value, sizeof(creds.auth_token) - 1);
+      else if (strcmp(key, "cf_bm") == 0)
+        strncpy(creds.cf_bm, value, sizeof(creds.cf_bm) - 1);
+    }
+    line = strtok(NULL, "\n");
+  }
+
+  free(contents);
+  return creds;
+}
+
 /* Internal write function to write json to Response struct */
 size_t fetch_write_to_mem(void *contents, size_t size_n, size_t n,
                           Fetched *resp) {
@@ -25,25 +88,8 @@ size_t fetch_write_to_mem(void *contents, size_t size_n, size_t n,
   return chunk_size;
 }
 
-typedef struct Cookies {
-  char *cuid;
-  char *g_state;
-  char *kdt;
-  char *dnt;
-  char *guest_id;
-  char twid[100];
-  char ct0[200];
-  char auth_token[100];
-  char *d_prefs;
-  char *lang;
-  char cf_bm[250];
-  char all[2048];
-} Cookies;
-
 /* fetch n tweets */
 Fetched *fetch_tweets(int n, Tweet *seen_tweets) {
-  setbuf(stdout, NULL); // disable buffering entirely
-
   curl_global_init(CURL_GLOBAL_DEFAULT);
   CURL *curl = curl_easy_init();
 
@@ -54,14 +100,14 @@ Fetched *fetch_tweets(int n, Tweet *seen_tweets) {
     printf("Succesfully initialized curl\n");
   }
 
+  // Credentials
+  printf("Getting credentials...\n");
+  Credentials creds = get_creds("credentials.conf");
+
   printf("Setting up request options:\n");
 
   // Build URL with payload parameters
   printf("  URL & Payload...\n");
-
-  printf("Query ID: ");
-  char qid[3072];
-  scanf("%s", qid);
   char url[3072];
   sprintf(
       url,
@@ -103,8 +149,7 @@ Fetched *fetch_tweets(int n, Tweet *seen_tweets) {
       "agine_annotation_enabled%%22%%3Atrue%%2C%%22responsive_web_grok_commun"
       "ity_note_auto_translation_is_enabled%%22%%3Atrue%%2C%%22responsive_web"
       "_enhance_cards_enabled%%22%%3Afalse%%7D",
-      qid);
-
+      creds.qid);
   curl_easy_setopt(curl, CURLOPT_URL, url);
 
   // Set headers
@@ -122,62 +167,51 @@ Fetched *fetch_tweets(int n, Tweet *seen_tweets) {
 
   //  Personal
   //    CSRF token
-  char csrf_token[200];
-  printf("CSRF Token: ");
-  scanf("%s", csrf_token);
-  char x_csrf_token[200]; // strlen() -> 14
-  sprintf(x_csrf_token, "x-csrf-token: %s", csrf_token);
+  char x_csrf_token[225];
+  sprintf(x_csrf_token, "x-csrf-token: %s", creds.csrf);
   headers = curl_slist_append(headers, x_csrf_token);
 
   //    Transaction ID
-  char transaction_id[200] = "x-client-transaction-id: "; // strlen() -> 25
-  printf("Client transaction ID: ");
-  scanf("%s", (transaction_id + 25));
+  char transaction_id[225];
+  sprintf(transaction_id, "x-client-transaction-id: %s", creds.tid);
   headers = curl_slist_append(headers, transaction_id);
 
   //    Authentication
-  char auth_bearer[200] = "authorization: Bearer "; // strlen() -> 22
-  printf("Authorization: Bearer ");
-  scanf("%s", (auth_bearer + 22));
+  char auth_bearer[225];
+  sprintf(auth_bearer, "authorization: %s", creds.auth_bearer);
   headers = curl_slist_append(headers, auth_bearer);
 
   //    Cookies
-  Cookies cookies;
   //      Client unique id (Optional)
-  cookies.cuid = "__cuid=";
+  // cookies.cuid = "__cuid=";
   //      Google state (Optional)
-  cookies.g_state = "g_state=";
+  // cookies.g_state = "g_state=";
   //      Known device token (Optional)
-  cookies.kdt = "kdt=";
+  // cookies.kdt = "kdt=";
   //      Do not track (Optional)
-  cookies.dnt = "dnt=";
+  // cookies.dnt = "dnt=";
   //      Guest ID (Optional)
-  cookies.guest_id = "guest_id=";
-  //      Twitter ID (Required)
-  printf("Twitter ID: ");
-  char twid[100];
-  scanf("%s", twid);
-  sprintf(cookies.twid, "twid=%s;", twid);
-  //      CSRF token (Required, needs to match)
-  sprintf(cookies.ct0, "ct0=%s;", csrf_token);
-  //      Auth token (Required)
-  printf("Auth token: ");
-  char auth_token[100];
-  scanf("%s", auth_token);
-  sprintf(cookies.auth_token, "auth_token=%s;", auth_token);
+  // cookies.guest_id = "guest_id=";
   //      Display preferences (Optional)
-  cookies.d_prefs = "d_prefs=";
+  // cookies.d_prefs = "d_prefs=";
+  //      Twitter ID (Required)
+  char twid[125];
+  sprintf(twid, "twid=%s;", creds.twid);
+  //      CSRF token (Required, needs to match)
+  char ct0[225];
+  sprintf(ct0, "ct0=%s;", creds.csrf);
+  //      Auth token (Required)
+  char auth_token[125];
+  sprintf(auth_token, "auth_token=%s;", creds.auth_token);
   //      Language (Required)
-  cookies.lang = "lang=en;";
-  //      Cloudflare bot management
-  printf("Cloud flare bot management: ");
-  char cf_bm[250];
-  scanf("%s", cf_bm);
-  sprintf(cookies.cf_bm, "__cf_bm=%s", cf_bm);
-  //      All essential
-  sprintf(cookies.all, "Cookie: %s%s%s%s", cookies.twid, cookies.ct0,
-          cookies.auth_token, cookies.lang);
-  headers = curl_slist_append(headers, cookies.all);
+  char lang[] = "lang=en;";
+  //      Cloudflare bot management (Required)
+  char cf_bm[300];
+  sprintf(cf_bm, "__cf_bm=%s", creds.cf_bm);
+  //      All cookies
+  char all_cookies[2000];
+  sprintf(all_cookies, "Cookie: %s%s%s%s", twid, ct0, auth_token, lang);
+  headers = curl_slist_append(headers, all_cookies);
 
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
@@ -213,7 +247,6 @@ Fetched *fetch_tweets(int n, Tweet *seen_tweets) {
 
   // Clean up
   printf("(fetch) Cleaning up...\n");
-  // free(seen_tweet_ids);
   curl_slist_free_all(headers);
   curl_easy_cleanup(curl);
   curl_global_cleanup();

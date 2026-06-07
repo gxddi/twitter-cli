@@ -26,63 +26,62 @@ int main() {
   // Parse response into tweets linked list
   Tweet *tweet_head = tweet_parse_json(resp->data);
 
-  // Go down tweets
+  // Clear screen before starting the feed
+  printf("\033[2J\033[H");
+
+  // Go through tweets
   Tweet *cur = tweet_head;
   while (cur) {
-
-    // Formatting
-    printf("\n\n\n\n\n\n\n\n\n\n\n\n\n");
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-    for (int i = 0; i < w.ws_col; i++) {
-      printf("=");
-    }
-    printf("\n");
 
-    // Print user and text
-    printf("@%s: %s\n", cur->username, cur->text);
+    // Top grid separator
+    printf("\n\033[38;5;239m");
+    for (int i = 0; i < w.ws_col; i++)
+      printf("━");
+    printf("\033[0m\n\n");
 
-    // Print image
+    // Main tweet
+    printf("\033[1;34m@%s\033[0m\n", cur->username);
+    printf("%s\n\n", cur->text);
+
     if (cur->image_url) {
-      printf("%s\n", cur->image_url);
-      ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-
-      // Load image url and print
       Image *img = image_load_url(cur->image_url);
       image_print(img, w.ws_col / 2);
-      // printf("%s\n", cur->image_url);
+      printf("\n");
       image_free(img);
     }
 
-    // Print quoted tweet
+    // Quoted tweet layout
     if (cur->quoted_tweet) {
-      printf("  \"@%s: %s\"\n", cur->quoted_tweet->username,
-             cur->quoted_tweet->text);
-      // Print image
-      if (cur->image_url) {
-        printf("%s\n", cur->image_url);
-        ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+      // Left border for quoted content
+      printf("\033[38;5;239m  "
+             "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m\n");
+      printf("\033[38;5;239m  ┃\033[0m \033[1;34m@%s\033[0m\n",
+             cur->quoted_tweet->username);
+      printf("\033[38;5;239m  ┃\033[0m %s\n", cur->quoted_tweet->text);
+      printf("\033[38;5;239m  ┃\033[0m\n");
 
-        // Load image url and print
-        Image *img = image_load_url(cur->image_url);
+      if (cur->quoted_tweet->image_url) {
+        // Print 4 spaces to align the image with the quoted text
+        printf("    ");
+        fflush(stdout);
+
+        Image *img = image_load_url(cur->quoted_tweet->image_url);
         image_print(img, w.ws_col / 3);
-        // printf("%s\n", cur->image_url);
+        printf("\n");
         image_free(img);
       }
     }
 
-    // Formatting
-    ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-    for (int i = 0; i < w.ws_col; i++) {
-      printf("=");
-    }
-    printf("\n");
-    printf("\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+    printf("\n\033[2mPress Enter to load next...\033[0m");
+    fflush(stdout);
 
-    // Clear input buffer
+    // Wait for the user to press Enter
     while (getchar() != '\n')
       ;
-    // Wait for keypress
-    getchar();
+
+    // Move cursor up one line and clear it so the feed looks continuous
+    printf("\033[1A\033[K");
     cur = cur->next;
   }
 

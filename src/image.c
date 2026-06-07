@@ -2,8 +2,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "../include/stb_image.h"
 
-#include <caca.h>
 #include <curl/curl.h>
+// #include <sixel.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -73,26 +73,69 @@ Image *image_load_url(char *url) {
 }
 
 int image_print(Image *img, int width) {
-  // printf("Printing with caca...");
-  int height = (img->height * width) / (img->width * 2);
+  if (!img || !img->pixels) {
+    return 1;
+  }
 
-  caca_canvas_t *canvas = caca_create_canvas(width, height);
-  caca_dither_t *dither =
-      caca_create_dither(32, img->width, img->height, img->width * 4,
-                         0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000);
+  // Kitty requires 32-bit RGBA for raw pixels (which stb_image provides with 4
+  // channels)
+  size_t total_bytes = img->width * img->height * 4;
 
-  caca_dither_bitmap(canvas, 0, 0, width, height, dither, img->pixels);
+  // Kitty protocol limits payload chunks to 4096 bytes.
+  // Base64 expands data by 4/3, so 3000 raw bytes = 4000 base64 bytes (safe).
+  size_t chunk_size = 3000;
 
-  // Print directly to stdout, no display/window needed
-  size_t len;
-  void *out = caca_export_canvas_to_memory(canvas, "ansi", &len);
-  fwrite(out, 1, len, stdout);
-  free(out);
+  char initial_keys[128];
+  if (width > 0) {
+    // a=T (transmit and display), f=32 (RGBA), s=width, v=height, c=columns
+    // (scales to fit)
+    snprintf(initial_keys, sizeof(initial_keys), "a=T,f=32,s=%d,v=%d,c=%d",
+             img->width, img->height, width);
+  } else {
+    snprintf(initial_keys, sizeof(initial_keys), "a=T,f=32,s=%d,v=%d",
+             img->width, img->height);
+  }
 
-  caca_free_dither(dither);
-  caca_free_canvas(canvas);
+  static const char b64_table[] =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+  for (size_t offset = 0; offset < total_bytes; offset += chunk_size) {
+    size_t current_chunk_len = total_bytes - offset;
+    if (current_chunk_len > chunk_size) {
+      current_chunk_len = chunk_size;
+    }
+
+    int is_last = (offset + current_chunk_len >= total_bytes);
+
+    // The first chunk needs the metadata format keys.
+    // m=1 means more chunks are coming, m=0 means this is the final chunk.
+    if (offset == 0) {
+      printf("\033_G%s,m=%d;", initial_keys, is_last ? 0 : 1);
+    } else {
+      printf("\033_Gm=%d;", is_last ? 0 : 1);
+    }
+
+    // Base64 encode the current chunk directly to stdout
+    unsigned char *data = img->pixels + offset;
+    for (size_t i = 0; i < current_chunk_len; i += 3) {
+      uint32_t n = data[i] << 16;
+      if (i + 1 < current_chunk_len)
+        n |= data[i + 1] << 8;
+      if (i + 2 < current_chunk_len)
+        n |= data[i + 2];
+
+      putchar(b64_table[(n >> 18) & 63]);
+      putchar(b64_table[(n >> 12) & 63]);
+      putchar(i + 1 < current_chunk_len ? b64_table[(n >> 6) & 63] : '=');
+      putchar(i + 2 < current_chunk_len ? b64_table[n & 63] : '=');
+    }
+
+    // Close the escape sequence for this chunk
+    printf("\033\\");
+  }
+
   return 0;
-};
+}
 
 int image_free(Image *img) {
   if (img) {
@@ -100,8 +143,8 @@ int image_free(Image *img) {
     stbi_image_free(img->pixels);
     img->buf = img->pixels = NULL;
     img->buf_size = img->width = img->height = img->channels = 0;
-    return 0;
     free(img);
+    return 0;
   }
   return 1;
 }
