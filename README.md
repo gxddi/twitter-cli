@@ -32,7 +32,7 @@ Requirements:
 6. Copy the variables from the request headers that are required into credentials.conf.
 
 Request headers should look something like this:
-
+```
 POST /i/api/graphql/*HERE*/HomeTimeline HTTP/2
 Host: x.com
 User-Agent: 
@@ -50,6 +50,7 @@ x-client-transaction-id: *HERE*
 authorization: *HERE*
 Connection: keep-alive
 Cookie: __cuid=; g_state=; kdt=; dnt=; guest_id=; twid=*HERE*; ct0=; auth_token=*HERE*; d_prefs=; __cuid=; lang=; __cf_bm=*HERE*
+```
 
 ![Request_Headers](./media/Request_Headers.png)
 
