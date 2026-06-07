@@ -68,3 +68,9 @@ Cookie: __cuid=; g_state=; kdt=; dnt=; guest_id=; twid=*HERE*; ct0=; auth_token=
 1. Browse twitter without trackers or unnecessary distractions
 2. Maintain a static feed without inducing changes in the algorithm
 3. For fun (Please feel free to contribute)
+
+## TBA
+1. Recording seen tweets
+2. Support for GIFs
+3. Support for other platforms
+4. Build spec
